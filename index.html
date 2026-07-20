@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Papírna – Střídání na strojích & Přestávky</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #121212;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 10px;
+        }
+
+        h1 {
+            font-size: 1.4rem;
+            margin-bottom: 5px;
+            color: #00cec9;
+        }
+
+        .controls-hint {
+            font-size: 0.85rem;
+            color: #aaa;
+            margin-bottom: 10px;
+        }
+
+        #gameContainer {
+            position: relative;
+            box-shadow: 0 0 25px rgba(0, 0, 0, 0.9);
+            border: 3px solid #444;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            background-color: #1e1e1e;
+        }
+
+        #dialogueBox {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.85);
+            border: 2px solid #00cec9;
+            border-radius: 5px;
+            padding: 10px 15px;
+            font-size: 0.9rem;
+            color: #fff;
+            pointer-events: none;
+            display: none;
+            z-index: 5;
+        }
+
+        .modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 440px;
+            background: #1e272e;
+            border: 3px solid #00cec9;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 0 30px rgba(0, 206, 201, 0.5);
+            display: none;
+            z-index: 10;
+        }
+
+        .modal h2 {
+            font-size: 1.1rem;
+            color: #00cec9;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #487eb0;
+            padding-bottom: 5px;
+            text-align: center;
+        }
+
+        .pc-btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .pc-btn {
+            background: #2980b9;
+            color: white;
+            border: none;
+            padding: 9px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.85rem;
+            transition: background 0.2s;
+        }
+
+        .pc-btn:hover { background: #3498db; }
+        .pc-btn.danger { background: #e74c3c; }
+        .pc-btn.danger:hover { background: #c0392b; }
+        .pc-btn.success { background: #2ecc71; }
+        .pc-btn.success:hover { background: #27ae60; }
+        .pc-btn.upgrade { background: #f39c12; }
+        .pc-btn.upgrade:hover { background: #e67e22; }
+        .pc-btn.coffee { background: #6c5ce7; }
+        .pc-btn.coffee:hover { background: #a29bfe; }
+        .pc-btn.close { background: #7f8c8d; margin-top: 5px; }
+        .pc-btn.close:hover { background: #95a5a6; }
+        .pc-btn:disabled { background: #555; cursor: not-allowed; }
+
+        #uiPanel {
+            margin-top: 10px;
+            display: flex;
+            gap: 15px;
+            background: #1e1e1e;
+            padding: 10px 20px;
+            border-radius: 5px;
+            border: 1px solid #333;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .stat-item { font-size: 0.85rem; }
+        .stat-value { font-weight: bold; color: #00cec9; }
+    </style>
+</head>
+<body>
+
+    <h1>2D Papírna – Střídání na strojích & Přestávky</h1>
+    <div class="controls-hint">Pohyb: <b>Šipky / WASD</b> | Manuální oprava: <b>[E] u stroje</b></div>
+
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="850" height="480"></canvas>
+        <div id="dialogueBox">...</div>
+
+        <!-- PC Vedoucího -->
+        <div id="pcModal" class="modal">
+            <h2>🖥️ Kancelář Vedoucího Výroby</h2>
+            <div style="font-size: 0.85rem; margin-bottom: 10px; color: #dcdde1;" id="pcLog">Pohotovostní režim.</div>
+            <div class="pc-btn-group">
+                <button class="pc-btn" id="toggleProductionBtn" onclick="toggleProduction()">Spustit Výrobu</button>
+                <button class="pc-btn coffee" id="breakBtn" onclick="toggleBreak()">Vyhlásit Přestávku</button>
+                <button class="pc-btn upgrade" onclick="hireWorker()">Najmout Dělníka (-10 000 Kč)</button>
+                <button class="pc-btn upgrade" id="hireManagerBtn" onclick="hireManager()">Najmout Manažera Nákupu (-25 000 Kč)</button>
+                <button class="pc-btn upgrade" id="hireOperatorBtn" onclick="hireOperator()">Najmout Operátora Expedice (-25 000 Kč)</button>
+                <button class="pc-btn close" onclick="closeModals()">Odejít</button>
+            </div>
+        </div>
+
+        <!-- PC Manažera Nákupu -->
+        <div id="buyModal" class="modal">
+            <h2>📦 Kancelář Manažera Nákupu</h2>
+            <div style="font-size: 0.85rem; margin-bottom: 10px; color: #dcdde1;" id="buyLog">Spravuje nákup dřeva.</div>
+            <div class="pc-btn-group">
+                <button class="pc-btn" onclick="buyWood()">Ručně objednat Dřevo (+50 m³ / -10 000 Kč)</button>
+                <button class="pc-btn" id="toggleAutoBuyBtn" onclick="toggleAutoBuy()">Zapnout Auto-Nákup</button>
+                <button class="pc-btn close" onclick="closeModals()">Odejít</button>
+            </div>
+        </div>
+
+        <!-- PC Operátora Expedice -->
+        <div id="sellModal" class="modal">
+            <h2>🚚 Kancelář Operátora Expedice</h2>
+            <div style="font-size: 0.85rem; margin-bottom: 10px; color: #dcdde1;" id="sellLog">Spravuje odvoz papíru.</div>
+            <div class="pc-btn-group">
+                <button class="pc-btn" onclick="sellPaper()">Ručně expedovat Papír (+15 000 Kč)</button>
+                <button class="pc-btn" id="toggleAutoSellBtn" onclick="toggleAutoSell()">Zapnout Auto-Expedici</button>
+                <button class="pc-btn close" onclick="closeModals()">Odejít</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="uiPanel">
+        <div class="stat-item">Dřevo: <span class="stat-value" id="uiWood">100 m³</span></div>
+        <div class="stat-item">Papír: <span class="stat-value" id="uiPaper">0 ks</span></div>
+        <div class="stat-item">Finance: <span class="stat-value" id="uiMoney">60 000 Kč</span></div>
+        <div class="stat-item">Stav: <span class="stat-value" id="uiStatus" style="color: #e74c3c;">STOJÍ</span></div>
+        <div class="stat-item">Zaměstnanci: <span class="stat-value" id="uiWorkersCount">3</span></div>
+        <div class="stat-item">Management: <span class="stat-value" id="uiMgmtCount">0/2</span></div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const dialogueBox = document.getElementById('dialogueBox');
+
+        // Načtení obrázku Managementu
+        const managementImg = new Image();
+        managementImg.src = 'assets/Managment.png';
+        let isManagementImgLoaded = false;
+        managementImg.onload = () => { isManagementImgLoaded = true; };
+
+        const gameState = { wood: 100, paper: 0, money: 60000 };
+        
+        let isProducing = false;
+        let isOnBreak = false;
+        let autoBuyEnabled = false;
+        let autoSellEnabled = false;
+        let productionProgress = 0;
+
+        let hasManager = false;
+        let hasOperator = false;
+
+        // 3 Stroje
+        const machines = [
+            { id: 'varna', name: 'Várna Celulózy', x: 20, y: 20, width: 140, height: 90, broken: false, burning: false, type: 'varna' },
+            { id: 'stroj', name: 'Papírenský Stroj', x: 180, y: 20, width: 160, height: 90, broken: false, burning: false, type: 'stroj' },
+            { id: 'susicka', name: 'Sušička Papíru', x: 360, y: 20, width: 140, height: 90, broken: false, burning: false, type: 'susicka' }
+        ];
+
+        const keys = {};
+        window.addEventListener('keydown', e => {
+            keys[e.key] = true;
+            if (e.key === 'e' || e.key === 'E') tryRepairMachine();
+        });
+        window.addEventListener('keyup', e => keys[e.key] = false);
+
+        // Hráč
+        const player = { x: 180, y: 350, width: 22, height: 22, speed: 3.5, color: '#00cec9' };
+
+        // Servis
+        const mechanicNPC = { x: 770, y: 200, homeX: 770, homeY: 200, color: '#f39c12', state: 'idle' };
+        const firemanNPC = { x: 810, y: 200, homeX: 810, homeY: 200, color: '#e74c3c', state: 'idle' };
+
+        // Místa u strojů pro max 3 dělníky na stroj
+        const machineWorkSpots = {
+            varna: [{x: 30, y: 130}, {x: 75, y: 130}, {x: 120, y: 130}],
+            stroj: [{x: 195, y: 130}, {x: 250, y: 130}, {x: 305, y: 130}],
+            susicka: [{x: 375, y: 130}, {x: 420, y: 130}, {x: 465, y: 130}]
+        };
+
+        // Čekací zóna pro dělníky navíc u strojů
+        const machineWaitSpots = {
+            varna: {x: 75, y: 180},
+            stroj: {x: 250, y: 180},
+            susicka: {x: 420, y: 180}
+        };
+
+        // Dělníci
+        const npcs = [
+            { id: 'karel', name: 'Karel', x: 50, y: 180, homeX: 50, homeY: 180, machineId: 'varna', color: '#e67e22', breakTarget: null },
+            { id: 'tonda', name: 'Tonda', x: 100, y: 180, homeX: 100, homeY: 180, machineId: 'stroj', color: '#e67e22', breakTarget: null },
+            { id: 'ema', name: 'Ema', x: 150, y: 180, homeX: 150, homeY: 180, machineId: 'susicka', color: '#e67e22', breakTarget: null }
+        ];
+
+        let tick = 0;
+        let breakSwapTimer = 0;
+        let shiftSwapTimer = 0;
+
+        // Pozice v kavárně (6) & pokojích (3)
+        const cafeSpots = [
+            { x: 540, y: 50 }, { x: 565, y: 50 }, { x: 590, y: 50 },
+            { x: 540, y: 80 }, { x: 565, y: 80 }, { x: 590, y: 80 }
+        ];
+
+        const roomSpots = [
+            { x: 355, y: 380 }, { x: 425, y: 380 }, { x: 495, y: 380 }
+        ];
+
+        // Čekací zóna pro přetékající dělníky na přestávce
+        const overflowBreakZone = { x: 330, y: 280 };
+
+        function updateUI() {
+            document.getElementById('uiWood').innerText = gameState.wood + ' m³';
+            document.getElementById('uiPaper').innerText = gameState.paper + ' ks';
+            document.getElementById('uiMoney').innerText = gameState.money.toLocaleString('cs-CZ') + ' Kč';
+            document.getElementById('uiWorkersCount').innerText = npcs.length;
+            document.getElementById('uiMgmtCount').innerText = (hasManager ? 1 : 0) + (hasOperator ? 1 : 0) + '/2';
+            
+            const statusEl = document.getElementById('uiStatus');
+            const toggleBtn = document.getElementById('toggleProductionBtn');
+            const breakBtn = document.getElementById('breakBtn');
+            const mgrBtn = document.getElementById('hireManagerBtn');
+            const oprBtn = document.getElementById('hireOperatorBtn');
+
+            if (mgrBtn) mgrBtn.disabled = hasManager;
+            if (oprBtn) oprBtn.disabled = hasOperator;
+            
+            const anyBurning = machines.some(m => m.burning);
+            const anyBroken = machines.some(m => m.broken);
+
+            if (anyBurning) {
+                statusEl.innerText = 'POŽÁR! 🔥'; statusEl.style.color = '#ff4757';
+            } else if (anyBroken) {
+                statusEl.innerText = 'PORUCHA! 🛠️'; statusEl.style.color = '#e74c3c';
+            } else if (isOnBreak) {
+                statusEl.innerText = 'PŘESTÁVKA ☕'; statusEl.style.color = '#f1c40f';
+            } else if (isProducing) {
+                statusEl.innerText = 'VÝROBA BĚŽÍ'; statusEl.style.color = '#2ecc71';
+            } else {
+                statusEl.innerText = 'STOJÍ'; statusEl.style.color = '#e74c3c';
+            }
+
+            if (toggleBtn) {
+                toggleBtn.innerText = isProducing ? 'Zastavit Výrobu' : 'Spustit Výrobu';
+                toggleBtn.className = isProducing ? 'pc-btn danger' : 'pc-btn success';
+            }
+
+            if (breakBtn) {
+                breakBtn.innerText = isOnBreak ? 'Ukončit Přestávku' : 'Vyhlásit Přestávku';
+            }
+        }
+
+        function toggleProduction() {
+            if (isProducing) {
+                isProducing = false;
+            } else {
+                if (gameState.wood >= 10) {
+                    isProducing = true;
+                    isOnBreak = false;
+                } else document.getElementById('pcLog').innerText = '❌ Chybí dřevo!';
+            }
+            updateUI();
+        }
+
+        function toggleBreak() {
+            isOnBreak = !isOnBreak;
+            if (isOnBreak) {
+                document.getElementById('pcLog').innerText = '☕ Vyhlášena přestávka!';
+                assignBreakSpots();
+            } else {
+                document.getElementById('pcLog').innerText = '▶️ Přestávka skončila, všichni zpět do práce.';
+            }
+            updateUI();
+        }
+
+        function assignBreakSpots() {
+            let cafeIndex = 0;
+            let roomIndex = 0;
+            let overflowIndex = 0;
+
+            npcs.forEach((npc) => {
+                if (cafeIndex < 6) {
+                    npc.breakTarget = { type: 'cafe', ...cafeSpots[cafeIndex] };
+                    cafeIndex++;
+                } else if (roomIndex < 3) {
+                    npc.breakTarget = { type: 'room', ...roomSpots[roomIndex] };
+                    roomIndex++;
+                } else {
+                    npc.breakTarget = { 
+                        type: 'overflow', 
+                        x: overflowBreakZone.x + (overflowIndex * 22), 
+                        y: overflowBreakZone.y 
+                    };
+                    overflowIndex++;
+                }
+            });
+        }
+
+        function swapBreakSpots() {
+            if (npcs.length > 1) {
+                const firstTarget = npcs[0].breakTarget;
+                for (let i = 0; i < npcs.length - 1; i++) {
+                    npcs[i].breakTarget = npcs[i + 1].breakTarget;
+                }
+                npcs[npcs.length - 1].breakTarget = firstTarget;
+            }
+        }
+
+        function hireWorker() {
+            if (gameState.money >= 10000) {
+                gameState.money -= 10000;
+                const assignedMachine = machines[npcs.length % machines.length];
+                npcs.push({
+                    id: 'delnik_' + (npcs.length + 1),
+                    name: 'Dělník ' + (npcs.length + 1),
+                    x: 40 + (npcs.length * 15), y: 180,
+                    homeX: 40 + (npcs.length * 15), homeY: 180,
+                    machineId: assignedMachine.id,
+                    color: '#f1c40f',
+                    breakTarget: null
+                });
+                if (isOnBreak) assignBreakSpots();
+                document.getElementById('pcLog').innerText = '✅ Najat nový dělník!';
+                updateUI();
+            } else {
+                document.getElementById('pcLog').innerText = '❌ Nedostatek financí (10 000 Kč)!';
+            }
+        }
+
+        function hireManager() {
+            if (hasManager) return;
+            if (gameState.money >= 25000) {
+                gameState.money -= 25000;
+                hasManager = true;
+                document.getElementById('pcLog').innerText = '✅ Manažer Nákupu najat!';
+                updateUI();
+            } else {
+                document.getElementById('pcLog').innerText = '❌ Nedostatek financí (25 000 Kč)!';
+            }
+        }
+
+        function hireOperator() {
+            if (hasOperator) return;
+            if (gameState.money >= 25000) {
+                gameState.money -= 25000;
+                hasOperator = true;
+                document.getElementById('pcLog').innerText = '✅ Operátor Expedice najat!';
+                updateUI();
+            } else {
+                document.getElementById('pcLog').innerText = '❌ Nedostatek financí (25 000 Kč)!';
+            }
+        }
+
+        function toggleAutoBuy() { if (hasManager) { autoBuyEnabled = !autoBuyEnabled; updateUI(); } }
+        function toggleAutoSell() { if (hasOperator) { autoSellEnabled = !autoSellEnabled; updateUI(); } }
+
+        function buyWood() {
+            if (gameState.money >= 10000) {
+                gameState.money -= 10000; gameState.wood += 50; updateUI(); return true;
+            }
+            return false;
+        }
+
+        function sellPaper() {
+            if (gameState.paper >= 10) {
+                gameState.paper -= 10; gameState.money += 15000; updateUI(); return true;
+            }
+            return false;
+        }
+
+        function tryRepairMachine() {
+            const pX = player.x + player.width / 2;
+            const pY = player.y + player.height / 2;
+
+            machines.forEach(m => {
+                if (m.broken || m.burning) {
+                    const mCenterX = m.x + m.width / 2;
+                    const mCenterY = m.y + m.height / 2;
+                    if (Math.hypot(pX - mCenterX, pY - mCenterY) < 90) {
+                        m.broken = false;
+                        m.burning = false;
+                        updateUI();
+                    }
+                }
+            });
+        }
+
+        function closeModals() {
+            document.getElementById('pcModal').style.display = 'none';
+            document.getElementById('buyModal').style.display = 'none';
+            document.getElementById('sellModal').style.display = 'none';
+        }
+
+        function update() {
+            tick++;
+
+            if (hasManager && autoBuyEnabled && gameState.wood <= 30) buyWood();
+            if (hasOperator && autoSellEnabled && gameState.paper >= 10) sellPaper();
+
+            // VÝROBA
+            const workingMachinesCount = machines.filter(m => !m.broken && !m.burning).length;
+            if (isProducing && workingMachinesCount > 0 && !isOnBreak) {
+                const speed = (workingMachinesCount / 3) * (1.2 + (npcs.length * 0.15));
+                productionProgress += speed;
+
+                if (Math.random() < 0.0012) {
+                    const randomMachine = machines[Math.floor(Math.random() * machines.length)];
+                    if (!randomMachine.broken && !randomMachine.burning) {
+                        if (Math.random() < 0.35) randomMachine.burning = true;
+                        else randomMachine.broken = true;
+                        updateUI();
+                    }
+                }
+
+                if (productionProgress >= 100) {
+                    productionProgress = 0;
+                    if (gameState.wood >= 10) {
+                        gameState.wood -= 10;
+                        gameState.paper += 8;
+                        updateUI();
+                    } else {
+                        isProducing = false;
+                        updateUI();
+                    }
+                }
+            }
+
+            // HASIČ LOGIKA
+            const burningMachine = machines.find(m => m.burning);
+            if (burningMachine) {
+                let tx = burningMachine.x + burningMachine.width / 2;
+                let ty = burningMachine.y + burningMachine.height + 10;
+                let dx = tx - firemanNPC.x, dy = ty - firemanNPC.y;
+                let dist = Math.hypot(dx, dy);
+                if (dist > 5) {
+                    firemanNPC.x += (dx / dist) * 2.8;
+                    firemanNPC.y += (dy / dist) * 2.8;
+                } else {
+                    burningMachine.burning = false;
+                    updateUI();
+                }
+            } else {
+                let dx = firemanNPC.homeX - firemanNPC.x, dy = firemanNPC.homeY - firemanNPC.y;
+                if (Math.hypot(dx, dy) > 2) { firemanNPC.x += dx * 0.05; firemanNPC.y += dy * 0.05; }
+            }
+
+            // OPRAVÁŘ LOGIKA
+            const brokenMachine = machines.find(m => m.broken && !m.burning);
+            if (brokenMachine) {
+                let tx = brokenMachine.x + brokenMachine.width / 2;
+                let ty = brokenMachine.y + brokenMachine.height + 10;
+                let dx = tx - mechanicNPC.x, dy = ty - mechanicNPC.y;
+                let dist = Math.hypot(dx, dy);
+                if (dist > 5) {
+                    mechanicNPC.x += (dx / dist) * 2.2;
+                    mechanicNPC.y += (dy / dist) * 2.2;
+                } else {
+                    brokenMachine.broken = false;
+                    updateUI();
+                }
+            } else {
+                let dx = mechanicNPC.homeX - mechanicNPC.x, dy = mechanicNPC.homeY - mechanicNPC.y;
+                if (Math.hypot(dx, dy) > 2) { mechanicNPC.x += dx * 0.05; mechanicNPC.y += dy * 0.05; }
+            }
+
+            // TIMER PRO STŘÍDÁNÍ DĚLNÍKŮ NA STROJÍCH A PŘI PŘESTÁVCE
+            if (isOnBreak) {
+                breakSwapTimer++;
+                if (breakSwapTimer > 250) {
+                    breakSwapTimer = 0;
+                    swapBreakSpots();
+                }
+            } else if (isProducing) {
+                shiftSwapTimer++;
+                if (shiftSwapTimer > 350) {
+                    shiftSwapTimer = 0;
+                    machines.forEach(m => {
+                        const machineWorkers = npcs.filter(n => n.machineId === m.id);
+                        if (machineWorkers.length > 3) {
+                            const last = machineWorkers.pop();
+                            const firstIndex = npcs.indexOf(machineWorkers[0]);
+                            const lastIndex = npcs.indexOf(last);
+                            npcs.splice(lastIndex, 1);
+                            npcs.splice(firstIndex, 0, last);
+                        }
+                    });
+                }
+            }
+
+            // POHYB DĚLNÍKŮ & STŘÍDÁNÍ
+            machines.forEach(m => {
+                const workersOnMachine = npcs.filter(n => n.machineId === m.id);
+                const isMachineBroken = m.broken || m.burning;
+
+                workersOnMachine.forEach((npc, index) => {
+                    let targetX = npc.homeX, targetY = npc.homeY;
+
+                    if (isOnBreak && npc.breakTarget) {
+                        targetX = npc.breakTarget.x;
+                        targetY = npc.breakTarget.y;
+                    } else if (isProducing) {
+                        if (isMachineBroken) {
+                            targetX = machineWaitSpots[m.id].x + (index * 20);
+                            targetY = machineWaitSpots[m.id].y;
+                        } else if (index < 3) {
+                            targetX = machineWorkSpots[m.id][index].x;
+                            targetY = machineWorkSpots[m.id][index].y;
+                        } else {
+                            targetX = machineWaitSpots[m.id].x + ((index - 3) * 20);
+                            targetY = machineWaitSpots[m.id].y;
+                        }
+                    }
+
+                    const dx = targetX - npc.x, dy = targetY - npc.y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist > 2) {
+                        npc.x += (dx / dist) * 2;
+                        npc.y += (dy / dist) * 2;
+                    }
+                });
+            });
+
+            // POHYB HRÁČE
+            if (keys['ArrowUp'] || keys['w'] || keys['W']) player.y -= player.speed;
+            if (keys['ArrowDown'] || keys['s'] || keys['S']) player.y += player.speed;
+            if (keys['ArrowLeft'] || keys['a'] || keys['A']) player.x -= player.speed;
+            if (keys['ArrowRight'] || keys['d'] || keys['D']) player.x += player.speed;
+
+            player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+            player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
+
+            // INTERAKCE
+            const pX = player.x + player.width / 2;
+            const pY = player.y + player.height / 2;
+            let activeDialogue = null;
+
+            closeModals();
+
+            machines.forEach(m => {
+                if (m.burning) {
+                    if (Math.hypot(pX - (m.x + m.width/2), pY - (m.y + m.height/2)) < 90) activeDialogue = '🔥 STROJ HOŘÍ! Hasič už spěchá na místo!';
+                } else if (m.broken) {
+                    if (Math.hypot(pX - (m.x + m.width/2), pY - (m.y + m.height/2)) < 90) activeDialogue = '🛠️ STROJ MÁ PORUCHU! Opravář jde opravovat (nebo stiskni [E]).';
+                }
+            });
+
+            if (!activeDialogue) {
+                if (Math.hypot(pX - 55, pY - 380) < 35) {
+                    document.getElementById('pcModal').style.display = 'block';
+                    activeDialogue = '💻 Kancelář Vedoucího Výroby';
+                }
+                else if (Math.hypot(pX - 135, pY - 380) < 35) {
+                    if (hasManager) {
+                        document.getElementById('buyModal').style.display = 'block';
+                        activeDialogue = '📦 Kancelář Manažera Nákupu';
+                    } else activeDialogue = '🔒 Kancelář Nákupu je prázdná. Najmi Manažera na PC Vedoucího!';
+                }
+                else if (Math.hypot(pX - 215, pY - 380) < 35) {
+                    if (hasOperator) {
+                        document.getElementById('sellModal').style.display = 'block';
+                        activeDialogue = '🚚 Kancelář Operátora Expedice';
+                    } else activeDialogue = '🔒 Kancelář Operátora je prázdná. Najmi ho na PC Vedoucího!';
+                }
+                else if (pX > 730 && pX < 840 && pY > 150 && pY < 270) {
+                    activeDialogue = '🧯 Stanoviště Údržby & Hasičů';
+                }
+            }
+
+            if (activeDialogue) {
+                dialogueBox.style.display = 'block';
+                dialogueBox.innerText = activeDialogue;
+            } else dialogueBox.style.display = 'none';
+        }
+
+        function draw() {
+            // PODLAHA
+            ctx.fillStyle = '#1e272e'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#2c3e50'; ctx.lineWidth = 1;
+            for (let x = 0; x < canvas.width; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
+            for (let y = 0; y < canvas.height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
+
+            // 1. KAVÁRNA
+            ctx.fillStyle = '#2c3a47'; ctx.fillRect(520, 10, 310, 110);
+            ctx.strokeStyle = '#f1c40f'; ctx.lineWidth = 2; ctx.strokeRect(520, 10, 310, 110);
+            ctx.fillStyle = '#f1c40f'; ctx.font = 'bold 11px sans-serif'; ctx.fillText('☕ KAVÁRNA & JÍDELNA (Kapacita: 6)', 530, 28);
+            ctx.fillStyle = '#7f8c8d'; ctx.fillRect(535, 45, 80, 45); ctx.fillRect(640, 45, 80, 45);
+
+            // 2. MÍSTNOST SERVISU & HASIČŮ
+            ctx.fillStyle = '#1a252f'; ctx.fillRect(730, 150, 110, 130);
+            ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 2; ctx.strokeRect(730, 150, 110, 130);
+            ctx.fillStyle = '#e74c3c'; ctx.font = 'bold 9px sans-serif'; ctx.fillText('SERVIS & HASIČI', 740, 168);
+            ctx.fillStyle = '#d35400'; ctx.fillRect(740, 220, 40, 15);
+
+            // 3. MANAGEMENT SEKTOR
+            ctx.strokeStyle = '#00cec9'; ctx.lineWidth = 2; ctx.strokeRect(10, 310, 260, 160);
+            
+            // Vykreslení načteného obrázku Managment.png (nebo záložního textu)
+            if (isManagementImgLoaded) {
+                ctx.drawImage(managementImg, 10, 310, 260, 160);
+            } else {
+                ctx.fillStyle = '#111d24'; ctx.fillRect(10, 310, 260, 160);
+                ctx.fillStyle = '#00cec9'; ctx.font = 'bold 11px sans-serif'; ctx.fillText('MANAGEMENT SEKTOR', 15, 325);
+            }
+
+            // Kancelář 1: Vedoucí
+            ctx.fillStyle = 'rgba(44, 62, 80, 0.6)'; ctx.fillRect(20, 335, 70, 125);
+            ctx.fillStyle = '#fff'; ctx.font = '9px sans-serif'; ctx.fillText('VEDOUCÍ', 30, 350);
+            ctx.fillStyle = '#d35400'; ctx.fillRect(40, 375, 25, 15);
+
+            // Kancelář 2: Manažer Nákupu
+            ctx.fillStyle = hasManager ? 'rgba(34, 63, 83, 0.6)' : 'rgba(26, 37, 47, 0.6)'; ctx.fillRect(100, 335, 70, 125);
+            ctx.fillStyle = hasManager ? '#9b59b6' : '#7f8c8d'; ctx.font = '9px sans-serif'; 
+            ctx.fillText(hasManager ? 'MANAŽER' : 'NEOBSAZENO', 105, 350);
+            if (hasManager) {
+                ctx.fillStyle = '#d35400'; ctx.fillRect(120, 375, 25, 15);
+                ctx.fillStyle = '#9b59b6'; ctx.beginPath(); ctx.arc(132, 368, 7, 0, Math.PI * 2); ctx.fill();
+            }
+
+            // Kancelář 3: Operátor Expedice
+            ctx.fillStyle = hasOperator ? 'rgba(31, 58, 77, 0.6)' : 'rgba(26, 37, 47, 0.6)'; ctx.fillRect(180, 335, 70, 125);
+            ctx.fillStyle = hasOperator ? '#fd79a8' : '#7f8c8d'; ctx.font = '9px sans-serif'; 
+            ctx.fillText(hasOperator ? 'OPERÁTOR' : 'NEOBSAZENO', 185, 350);
+            if (hasOperator) {
+                ctx.fillStyle = '#d35400'; ctx.fillRect(200, 375, 25, 15);
+                ctx.fillStyle = '#fd79a8'; ctx.beginPath(); ctx.arc(212, 368, 7, 0, Math.PI * 2); ctx.fill();
+            }
+
+            // 4. POKOJE NA ODPOČINEK
+            ctx.strokeStyle = '#9b59b6'; ctx.lineWidth = 2; ctx.strokeRect(320, 310, 220, 160);
+            ctx.fillStyle = '#a29bfe'; ctx.font = 'bold 11px sans-serif'; ctx.fillText('POKOJE NA ODPOČINEK (Max 3)', 325, 325);
+            for(let r = 0; r < 3; r++) {
+                const rx = 330 + (r * 70);
+                ctx.fillStyle = '#2d3436'; ctx.fillRect(rx, 340, 60, 120);
+                ctx.strokeStyle = '#6c5ce7'; ctx.strokeRect(rx, 340, 60, 120);
+                ctx.fillStyle = '#e74c3c'; ctx.fillRect(rx + 10, 365, 40, 50); ctx.fillStyle = '#ecf0f1'; ctx.fillRect(rx + 10, 365, 40, 12);
+            }
+
+            // 5. EXPEDICE & LOGISTIKA
+            ctx.fillStyle = '#2d3436'; ctx.fillRect(560, 310, 280, 160);
+            ctx.strokeStyle = '#e67e22'; ctx.lineWidth = 2; ctx.strokeRect(560, 310, 280, 160);
+            ctx.fillStyle = '#e67e22'; ctx.font = 'bold 11px sans-serif'; ctx.fillText('EXPEDICE & LOGISTIKA', 570, 328);
+            
+            ctx.fillStyle = '#d35400';
+            ctx.fillRect(575, 350, 20, 20); ctx.fillRect(598, 350, 20, 20);
+            ctx.fillRect(585, 332, 20, 18);
+            ctx.fillRect(575, 380, 45, 25);
+
+            ctx.fillStyle = '#2c3e50'; ctx.fillRect(660, 355, 120, 75);
+            ctx.strokeStyle = '#bdc3c7'; ctx.strokeRect(660, 355, 120, 75);
+            ctx.fillStyle = '#e74c3c'; ctx.fillRect(780, 370, 45, 60);
+            ctx.fillStyle = '#3498db'; ctx.fillRect(800, 375, 20, 20);
+            ctx.fillStyle = '#000';
+            ctx.beginPath(); ctx.arc(680, 435, 10, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(740, 435, 10, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(800, 435, 10, 0, Math.PI*2); ctx.fill();
+
+            // 6. DETAILNÍ STROJE
+            machines.forEach(m => {
+                const isBroken = m.broken;
+                const isBurning = m.burning;
+
+                ctx.fillStyle = isBurning ? ((tick % 10 < 5) ? '#e74c3c' : '#f39c12') : (isBroken ? '#c0392b' : '#34495e');
+                ctx.fillRect(m.x, m.y, m.width, m.height);
+                ctx.strokeStyle = isBurning ? '#ff4757' : (isBroken ? '#ff0000' : '#7f8c8d');
+                ctx.lineWidth = 2; ctx.strokeRect(m.x, m.y, m.width, m.height);
+
+                if (m.id === 'varna') {
+                    ctx.fillStyle = '#7f8c8d'; ctx.fillRect(m.x + 15, m.y + 25, 45, 55);
+                    ctx.beginPath(); ctx.arc(m.x + 37, m.y + 25, 22, Math.PI, 0); ctx.fill();
+                    ctx.fillStyle = '#95a5a6'; ctx.fillRect(m.x + 75, m.y + 40, 50, 12);
+                    ctx.fillStyle = '#f1c40f'; ctx.beginPath(); ctx.arc(m.x + 37, m.y + 45, 8, 0, Math.PI*2); ctx.fill();
+                } 
+                else if (m.id === 'stroj') {
+                    const rot = (isProducing && !isBroken && !isBurning) ? (tick * 0.1) : 0;
+                    ctx.fillStyle = '#bdc3c7';
+                    for(let i = 0; i < 3; i++) {
+                        let rx = m.x + 25 + (i * 45);
+                        let ry = m.y + 55;
+                        ctx.beginPath(); ctx.arc(rx, ry, 14, 0, Math.PI*2); ctx.fill();
+                        ctx.strokeStyle = '#2c3e50'; ctx.beginPath();
+                        ctx.moveTo(rx, ry); ctx.lineTo(rx + Math.cos(rot)*12, ry + Math.sin(rot)*12); ctx.stroke();
+                    }
+                    ctx.fillStyle = '#ecf0f1'; ctx.fillRect(m.x + 10, m.y + 38, 140, 4);
+                } 
+                else if (m.id === 'susicka') {
+                    ctx.fillStyle = '#e67e22'; ctx.fillRect(m.x + 15, m.y + 30, 110, 45);
+                    ctx.fillStyle = '#d35400';
+                    for(let i = 0; i < 5; i++) { ctx.fillRect(m.x + 22 + (i * 20), m.y + 35, 8, 35); }
+                    ctx.fillStyle = '#e74c3c'; ctx.fillRect(m.x + 130, m.y + 35, 4, 30);
+                }
+
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 10px sans-serif'; ctx.fillText(m.name, m.x + 8, m.y + 15);
+
+                if (isBurning) {
+                    ctx.fillStyle = '#ff4757'; ctx.font = 'bold 11px sans-serif';
+                    ctx.fillText('🔥 POŽÁR!', m.x + m.width/2 - 25, m.y + m.height/2 + 5);
+                } else if (isBroken) {
+                    ctx.fillStyle = '#f1c40f'; ctx.font = 'bold 10px sans-serif';
+                    ctx.fillText('🛠️ PORUCHA', m.x + m.width/2 - 28, m.y + m.height/2 + 5);
+                }
+            });
+
+            // HASIČ & OPRAVÁŘ
+            ctx.fillStyle = mechanicNPC.color; ctx.beginPath(); ctx.arc(mechanicNPC.x, mechanicNPC.y, 9, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.font = '9px sans-serif'; ctx.fillText('🛠️', mechanicNPC.x - 5, mechanicNPC.y - 10);
+
+            ctx.fillStyle = firemanNPC.color; ctx.beginPath(); ctx.arc(firemanNPC.x, firemanNPC.y, 9, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.font = '9px sans-serif'; ctx.fillText('🚒', firemanNPC.x - 5, firemanNPC.y - 10);
+
+            // ZAMĚSTNANCI (NPC)
+            npcs.forEach(npc => {
+                const assignedMachine = machines.find(m => m.id === npc.machineId);
+                const isMachineWorking = assignedMachine && !assignedMachine.broken && !assignedMachine.burning;
+                const isWalking = (isProducing && isMachineWorking) || isOnBreak;
+                const animY = isWalking ? Math.sin(tick * 0.25) * 2 : 0;
+
+                ctx.fillStyle = npc.color; ctx.beginPath(); ctx.arc(npc.x + 9, npc.y + 9 + animY, 9, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#f1c40f'; ctx.fillRect(npc.x + 1, npc.y + animY, 16, 4);
+            });
+
+            // HRÁČ
+            ctx.fillStyle = player.color; ctx.fillRect(player.x, player.y, player.width, player.height);
+            ctx.fillStyle = '#ffffff'; ctx.fillRect(player.x + 2, player.y, player.width - 4, 5);
+            ctx.fillStyle = '#00cec9'; ctx.font = 'bold 11px sans-serif'; ctx.fillText('Ty', player.x + 4, player.y - 6);
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
